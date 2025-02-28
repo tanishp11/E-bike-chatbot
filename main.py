@@ -68,7 +68,7 @@ SYSTEM_MESSAGE = """
     "  'Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly.' "
 """
 
-VOICE = 'alloy'
+VOICE = 'Nova' 
 
 LOG_EVENT_TYPES = [
     'error', 'response.content.done', 'rate_limits.updated',
