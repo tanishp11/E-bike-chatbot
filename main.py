@@ -98,7 +98,7 @@ async def handle_incoming_call(request: Request):
     # <Say> punctuation to improve text-to-speech flow
     response.say("Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes.")
     response.pause(length=1)
-    response.say("O.K. you can start talking!")
+    response.say("How can I assist you today?")
     host = request.url.hostname
     connect = Connect()
     connect.stream(url=f'wss://{host}/media-stream')
