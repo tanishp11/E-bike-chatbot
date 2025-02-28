@@ -1,3 +1,4 @@
+import uvicorn
 import os
 import json
 import base64
@@ -284,7 +285,6 @@ async def initialize_session(openai_ws):
     await send_initial_conversation_item(openai_ws)
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+# if __name__ == "__main__":
+#     uvicorn.run(app, host="0.0.0.0", port=PORT)
 
