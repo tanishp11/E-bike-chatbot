@@ -17,6 +17,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 8000))
 
+
 SYSTEM_MESSAGE = """
 Role:
 You are a customer support assistant responsible for handling Sales, Support, Partnership, and Customer Service queries for E-bike BC. Your tasks include collecting customer details, creating Zoho support tickets, and transferring calls when needed.
@@ -40,15 +41,7 @@ User Intent Handling:
        - “I will create a support ticket for you. Please provide your name, email, phone number, and the e-bike model or product of interest.”  
        - Capture details (voice-to-text).  
        - “Your ticket has been successfully created. Someone will get back to you shortly. Have a great day!” [End Call]  
-   - Given details are mandatory to provide in JSON format:
-     ```json
-     {
-         "full_name": "User-provided full name",
-         "email_address": "User-provided email",
-         "phone_number": "User-provided phone number",
-         "e-bike_model": "User-provided e-bike model or product of interest"
-     }
-     ```
+   - **Once a sales query is resolved, end the call.**  
 
 2. **Support Query Handling**  
    - Greet the customer and ask about their issue.  
@@ -61,6 +54,7 @@ User Intent Handling:
    - Ask if they would like to speak with the Support Team:  
      - **If Yes:** Transfer the call to the Support Team.  
      - **If No:** Confirm that a ticket has been created and provide the reference number.  
+   - **Once a support query is resolved, end the call.**  
 
 3. **Partnership Query Handling**  
    - AI Agent: “How can I assist you with partnerships or general inquiries?”  
@@ -75,6 +69,7 @@ User Intent Handling:
        - “I will create a support ticket for you. Please provide your name, email, and a brief description of your query.”  
        - Capture details (voice-to-text).  
        - “Your ticket has been successfully created. Someone will get back to you shortly. Have a great day!”  
+   - **Once a partnership query is resolved, end the call.**  
 
 4. **Customer Service Query Handling**  
    - AI Agent: “I can assist with customer service queries. How can I help?”  
@@ -84,6 +79,7 @@ User Intent Handling:
      - “Please provide your name, email, and a brief description of your issue.”  
      - Capture details (voice-to-text).  
      - “Your ticket has been created successfully. Our team will reach out to you soon. Have a great day!” [End Call]  
+   - **Once a customer service query is resolved, end the call.**  
 
 Additional Guidelines:
 - **Reassurance for Hesitant Customers:**  
@@ -95,6 +91,7 @@ Additional Guidelines:
   - End each call with:  
     *"Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly."*  
 """
+
 
 
 
@@ -228,7 +225,7 @@ async def handle_media_stream(websocket: WebSocket):
                     if response.get('type') == 'conversation.item.create' and response.get('item'):
                         content = response['item'].get('content', [])
                         for item in content:
-                            if item.get("type") == "input_text" and "end call" in item.get("text", "").lower():
+                            if item.get("type") == "input_text" and "End Call" in item.get("text", "").lower():
                                 print("User requested to end the call. Closing connection...")
                                 await websocket.close()
                                 return  # Exit function to stop processing
