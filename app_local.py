@@ -603,14 +603,8 @@ SYSTEM_MESSAGE = """
     "• Ask the customer if they would like to speak with the Sales Team. "
     "  - If Yes: Transfer the call to the Sales Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    "  - given detail are mandatory to provide us JSON format."
-    { 
-        "full_name":"full name provide must by user",
-        "email_address":"user information email provide by user",
-        "phone_number":"user information phone provide by user",
-        "e-bike_model":"user information e-bike_model provide by user"
-    }
-
+    
+    
     "2. Support Query Handling: "
     "• Greet the customer and ask about their issue. "
     "• Collect the following details: "
@@ -622,13 +616,7 @@ SYSTEM_MESSAGE = """
     "• Ask the customer if they would like to speak with the Support Team. "
     "  - If Yes: Transfer the call to the Support Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    "  - given detail are mandatory to provide us JSON format."
-    { 
-        "full_name":"full name provide must by user",
-        "email_address":"user information email provide by user",
-        "phone_number":"user information phone provide by user",
-        "e-bike_model":"user information e-bike_model provide by user"
-    }
+    
 
     "3. Partnership Query Handling: "
     "• Greet the customer and ask how you can assist. "
@@ -641,13 +629,14 @@ SYSTEM_MESSAGE = """
     "• Ask if they would like to speak with the Sales Team. "
     "  - If Yes: Transfer the call to the Sales Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    "  - given detail are mandatory to provide us JSON format."
-    { 
-        "full_name":"full name provide must by user",
-        "email_address":"user information email provide by user",
-        "phone_number":"user information phone provide by user",
-        "e-bike_model":"user information e-bike_model provide by user"
-    }
+    
+    payload formate:
+        {
+            "full_name": "<User Provided Full Name>",
+            "email_address": "<User Provided Email>",
+            "phone_number": "<User Provided Phone>",
+            "e-bike_model": "<Based on the Inquiry Type>"
+        }
 
     "Additional Features: "
     "• If a customer hesitates, provide reassurance: "
@@ -772,6 +761,10 @@ async def handle_media_stream(websocket: WebSocket):
                             }
                         }
                         await websocket.send_json(audio_delta)
+
+                    if response.get('type') == 'response.message.delta' and 'text' in response:
+                        text_response = response['text']
+                        print(f"AI Response (Text): {text_response}")
 
                         if response_start_timestamp_twilio is None:
                             response_start_timestamp_twilio = latest_media_timestamp
