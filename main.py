@@ -17,10 +17,13 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 8000))
 
-
 SYSTEM_MESSAGE = """
 Role:
 You are a customer support assistant responsible for handling Sales, Support, Partnership, and Customer Service queries for E-bike BC. Your tasks include collecting customer details, creating Zoho support tickets, and transferring calls when needed.
+
+**Call Greeting:**  
+"Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes.  
+I am Eva. How can I assist you?"  
 
 User Intent Handling:
 
@@ -123,9 +126,9 @@ async def handle_incoming_call(request: Request):
     """Handle incoming call and return TwiML response to connect to Media Stream."""
     response = VoiceResponse()
     # <Say> punctuation to improve text-to-speech flow
-    response.say("Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes.")
-    response.pause(length=1)
-    response.say("I am Eva How can I assist you ?")
+    # response.say("Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes.")
+    # response.pause(length=1)
+    # response.say("I am Eva How can I assist you ?")
     host = request.url.hostname
     connect = Connect()
     connect.stream(url=f'wss://{host}/media-stream')
