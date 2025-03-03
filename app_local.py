@@ -603,6 +603,13 @@ SYSTEM_MESSAGE = """
     "• Ask the customer if they would like to speak with the Sales Team. "
     "  - If Yes: Transfer the call to the Sales Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
+    "  - given detail are mandatory to provide us JSON format."
+    { 
+        "full_name":"full name provide must by user",
+        "email_address":"user information email provide by user",
+        "phone_number":"user information phone provide by user",
+        "e-bike_model":"user information e-bike_model provide by user"
+    }
 
     "2. Support Query Handling: "
     "• Greet the customer and ask about their issue. "
@@ -615,6 +622,13 @@ SYSTEM_MESSAGE = """
     "• Ask the customer if they would like to speak with the Support Team. "
     "  - If Yes: Transfer the call to the Support Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
+    "  - given detail are mandatory to provide us JSON format."
+    { 
+        "full_name":"full name provide must by user",
+        "email_address":"user information email provide by user",
+        "phone_number":"user information phone provide by user",
+        "e-bike_model":"user information e-bike_model provide by user"
+    }
 
     "3. Partnership Query Handling: "
     "• Greet the customer and ask how you can assist. "
@@ -627,6 +641,13 @@ SYSTEM_MESSAGE = """
     "• Ask if they would like to speak with the Sales Team. "
     "  - If Yes: Transfer the call to the Sales Team. "
     "  - If No: Confirm that a ticket has been created and provide the reference number. "
+    "  - given detail are mandatory to provide us JSON format."
+    { 
+        "full_name":"full name provide must by user",
+        "email_address":"user information email provide by user",
+        "phone_number":"user information phone provide by user",
+        "e-bike_model":"user information e-bike_model provide by user"
+    }
 
     "Additional Features: "
     "• If a customer hesitates, provide reassurance: "
@@ -849,7 +870,7 @@ async def initialize_session(openai_ws):
     }
 
     dumped_data = json.dumps(session_update)
-    print("duped_Data-------------->", dumped_data)
+    print("dumped_Data-------------->", dumped_data)
     loaded_data = json.dumps(session_update)
     print("loaded_Data-------------->", loaded_data)
     print('Sending session update:', json.dumps(session_update))
@@ -877,6 +898,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+
+
+USER_SESSIONS = {}
+
 async def handle_media_stream(websocket: WebSocket):
     logging.info("Client connected to media stream")
     try:
@@ -884,7 +909,6 @@ async def handle_media_stream(websocket: WebSocket):
             logging.info(f"Received message: {message}")
     except WebSocketDisconnect:
         logging.warning("Client disconnected")
-
 
 
 
