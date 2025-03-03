@@ -224,6 +224,14 @@ async def handle_media_stream(websocket: WebSocket):
                         if last_assistant_item:
                             print(f"Interrupting response with id: {last_assistant_item}")
                             await handle_speech_started_event()
+
+                    if response.get('type') == 'conversation.item.create' and response.get('item'):
+                        content = response['item'].get('content', [])
+                        for item in content:
+                            if item.get("type") == "input_text" and "end call" in item.get("text", "").lower():
+                                print("User requested to end the call. Closing connection...")
+                                await websocket.close()
+                                return  # Exit function to stop processing
             except Exception as e:
                 print(f"Error in send_to_twilio: {e}")
 
