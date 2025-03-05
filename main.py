@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from twilio.rest import Client
-from .zoho_cread  import process_and_create_tickets, extract_all_info,get_access_token
+from zoho_cread  import process_and_create_tickets, extract_all_info,get_access_token
 from dotenv import load_dotenv
 
 load_dotenv()
