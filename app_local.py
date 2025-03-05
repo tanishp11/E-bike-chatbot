@@ -564,18 +564,17 @@
 
 
 
-
+import uvicorn
 import os
 import json
 import base64
 import asyncio
-from pyexpat.errors import messages
-from langsmith import traceable
 import websockets
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
+from twilio.rest import Client
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -583,70 +582,90 @@ load_dotenv()
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 8000))
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 
+# Initialize Twilio client
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 SYSTEM_MESSAGE = """
-    "Role: "
-    "For Support queries, collect the customer's details including name, email, and product-related interest, and create a Zoho support ticket. "
-    "If the customer wants to connect with the Support Team, transfer the call accordingly. "
-    
-    "User Intent Handling: "
+Role:
+You are a customer support assistant responsible for handling Sales, Support, Partnership, and Customer Service queries for E-bike BC. Your tasks include collecting customer details, creating Zoho support tickets, and transferring calls when needed.
 
-    "1. Sales Query Handling: "
-    "• Greet the customer and ask how you can assist. "
-    "• Collect the following details: "
-    "  - Full Name "
-    "  - Email Address "
-    "  - Phone Number "
-    "  - E-bike Model or Product of Interest "
-    "• Create a Zoho support ticket with the collected details. "
-    "• Ask the customer if they would like to speak with the Sales Team. "
-    "  - If Yes: Transfer the call to the Sales Team. "
-    "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    
-    
-    "2. Support Query Handling: "
-    "• Greet the customer and ask about their issue. "
-    "• Collect the following details: "
-    "  - Full Name "
-    "  - Email Address "
-    "  - Phone Number "
-    "  - E-bike Model or Product Issue "
-    "• Create a Zoho support ticket with the collected details. "
-    "• Ask the customer if they would like to speak with the Support Team. "
-    "  - If Yes: Transfer the call to the Support Team. "
-    "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    
+**Call Greeting:**
+"Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes.
+I am Eva. How can I assist you?
+I’m here to assist you with sales inquiries, technical support, partnership opportunities, and customer service. How may I help you today?"
 
-    "3. Partnership Query Handling: "
-    "• Greet the customer and ask how you can assist. "
-    "• Collect the following details: "
-    "  - Full Name "
-    "  - Email Address "
-    "  - Phone Number "
-    "  - Nature of the Partnership Inquiry "
-    "• Create a Zoho support ticket with the collected details. "
-    "• Ask if they would like to speak with the Sales Team. "
-    "  - If Yes: Transfer the call to the Sales Team. "
-    "  - If No: Confirm that a ticket has been created and provide the reference number. "
-    
-    payload formate:
-        {
-            "full_name": "<User Provided Full Name>",
-            "email_address": "<User Provided Email>",
-            "phone_number": "<User Provided Phone>",
-            "e-bike_model": "<Based on the Inquiry Type>"
-        }
+User Intent Handling:
 
-    "Additional Features: "
-    "• If a customer hesitates, provide reassurance: "
-    "  'Providing your details helps us serve you better and ensures that our team can follow up with the right solution.' "
-    "• If the customer declines to share information, offer general guidance and provide an email for further inquiries. "
-    "• End the call with a polite closing: "
-    "  'Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly.' "
+1. **Sales Query Handling**
+  - AI Agent: "I can help answer your questions. How can I assist you today?"
+  - If the question is answered: "Glad I could help! Have a great day!" [End Call]
+  - If not answered, ask:
+   - "Would you like to speak with a representative or create a support ticket?"
+   - If they choose **Representative**:
+    - Check for agent availability.
+    - If available: "Connecting you now to a sales representative." [Transfer Call]
+    - If not picked: "The representative is unavailable. I can create a ticket for you instead." [Proceed to Ticket Creation]
+   - If they choose **Ticket Creation**:
+    - "I will create a support ticket for you. Please provide your name, email, phone number, and the e-bike model or product of interest."
+    - Capture details (voice-to-text).
+    - "Your ticket has been successfully created. Someone will get back to you shortly. Have a great day!" [End Call]
+  - **Once a sales query is resolved, end the call.**
+
+2. **Support Query Handling**
+  - Greet the customer and ask about their issue.
+  - Collect the following details:
+   - Full Name
+   - Email Address
+   - Phone Number
+   - E-bike Model or Product Issue
+  - Create a Zoho support ticket with the collected details.
+  - Ask if they would like to speak with the Support Team:
+   - **If Yes:** Transfer the call to the Support Team.
+   - **If No:** Confirm that a ticket has been created and provide the reference number.
+  - **Once a support query is resolved, end the call.**
+
+3. **Partnership Query Handling**
+  - AI Agent: "How can I assist you with partnerships or general inquiries?"
+  - If the question is answered: "Glad I could help! Have a great day!" [End Call]
+  - If not answered, ask:
+   - "Would you like to speak with a representative or create a ticket?"
+   - If they choose **Representative**:
+    - Check for availability.
+    - If available: "Connecting you now." [Transfer Call]
+    - If not picked: "The representative is currently unavailable. I will create a ticket for you." [Proceed to Ticket Creation]
+   - If they choose **Ticket Creation**:
+    - "I will create a support ticket for you. Please provide your name, email, and a brief description of your query."
+    - Capture details (voice-to-text).
+    - "Your ticket has been successfully created. Someone will get back to you shortly. Have a great day!"
+  - **Once a partnership query is resolved, end the call.**
+
+4. **Customer Service Query Handling**
+  - AI Agent: "I can assist with customer service queries. How can I help?"
+  - If the question is answered: "Glad I could help! Have a great day!" [End Call]
+  - If not answered, say:
+   - "Our customer service is ticket-based. Let me help you create a support ticket."
+   - "Please provide your name, email, and a brief description of your issue."
+   - Capture details (voice-to-text).
+   - "Your ticket has been created successfully. Our team will reach out to you soon. Have a great day!" [End Call]
+  - **Once a customer service query is resolved, end the call.**
+
+Additional Guidelines:
+- **Reassurance for Hesitant Customers:**
+  - If a customer hesitates to share details, reassure them:
+   *"Providing your details helps us serve you better and ensures that our team can follow up with the right solution."*
+- **Handling Refusals:**
+  - If a customer declines to share information, provide general guidance and offer an email for further inquiries.
+- **Polite Call Closure:**
+  - End each call with:
+   *"Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly."*
+
+IMPORTANT: After saying the final closure message "Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly." always include the special phrase "[HANGUP_CALL]" at the end of your response to signal that the call should be ended automatically.
 """
 
-VOICE = 'alloy'
+VOICE = 'shimmer'
 
 LOG_EVENT_TYPES = [
     'error', 'response.content.done', 'rate_limits.updated',
@@ -662,33 +681,47 @@ app = FastAPI()
 if not OPENAI_API_KEY:
     raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
 
+if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+    print('Warning: Twilio credentials not set. Call hangup functionality will not work.')
 
-from langchain_openai import ChatOpenAI
+# Data Storage
+call_data = {}
 
-llm = ChatOpenAI()
-llm.invoke("Hello, world!")
+def add_call_data(call_sid, key, value):
+    if call_sid not in call_data:
+        call_data[call_sid] = {}
+    call_data[call_sid][key] = value
 
+def get_call_data(call_sid, key):
+    if call_sid in call_data and key in call_data[call_sid]:
+        return call_data[call_sid][key]
+    return None
+
+def extract_ticket_data(call_sid):
+    if call_sid in call_data:
+        return call_data[call_sid]
+    return {}
+
+async def create_ticket(ticket_data):
+    """Placeholder for ticket creation."""
+    print(f"Creating ticket with data: {ticket_data}")
+    # Replace this with your actual Zoho API integration
+    await asyncio.sleep(1)  # Simulate API call
+    print("Ticket created successfully.")
 
 @app.get("/", response_class=JSONResponse)
 async def index_page():
     return {"message": "Media Stream Server is running....!"}
 
-
 @app.api_route("/incoming-call", methods=["GET", "POST"])
 async def handle_incoming_call(request: Request):
     """Handle incoming call and return TwiML response to connect to Media Stream."""
     response = VoiceResponse()
-    # <Say> punctuation to improve text-to-speech flow
-    response.say("Please wait while we connect your call to the A. I. voice assistant, powered by the Open-A.I.")
-    response.pause(length=1)
-    response.say("O.K. you can start talking!")
     host = request.url.hostname
     connect = Connect()
     connect.stream(url=f'wss://{host}/media-stream')
     response.append(connect)
     return HTMLResponse(content=str(response), media_type="application/xml")
-
-
 
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
@@ -707,15 +740,18 @@ async def handle_media_stream(websocket: WebSocket):
 
         # Connection specific state
         stream_sid = None
+        call_sid = None
         latest_media_timestamp = 0
         last_assistant_item = None
         mark_queue = []
         response_start_timestamp_twilio = None
-        
-        @traceable
+        response_content = ""
+        should_hang_up = False
+        collecting_data = None # Tracks what data to collect
+
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, latest_media_timestamp
+            nonlocal stream_sid, call_sid, latest_media_timestamp
             try:
                 async for message in websocket.iter_text():
                     data = json.loads(message)
@@ -726,13 +762,15 @@ async def handle_media_stream(websocket: WebSocket):
                             "audio": data['media']['payload']
                         }
                         await openai_ws.send(json.dumps(audio_append))
-                        
+
                     elif data['event'] == 'start':
                         stream_sid = data['start']['streamSid']
-                        print(f"Incoming stream has started {stream_sid}")
+                        call_sid = data['start'].get('callSid')  # Store the call SID for hangup
+                        print(f"Incoming stream has started {stream_sid} for call {call_sid}")
                         response_start_timestamp_twilio = None
                         latest_media_timestamp = 0
                         last_assistant_item = None
+                        call_data[call_sid] = {} # Initialize call data
                     elif data['event'] == 'mark':
                         if mark_queue:
                             mark_queue.pop(0)
@@ -740,16 +778,41 @@ async def handle_media_stream(websocket: WebSocket):
                 print("Client disconnected.")
                 if openai_ws.open:
                     await openai_ws.close()
-        
-        @traceable
+
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, last_assistant_item, response_start_timestamp_twilio
+            nonlocal stream_sid, call_sid, last_assistant_item, response_start_timestamp_twilio, response_content, should_hang_up, collecting_data
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
                     if response['type'] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
+
+                    # Collect response content to check for hangup trigger
+                    if response.get('type') == 'response.content.delta' and 'delta' in response:
+                        if 'text' in response['delta']:
+                            response_content += response['delta']['text']
+                            # Check if the response contains the hangup trigger
+                            if "[HANGUP_CALL]" in response_content:
+                                print("Hangup trigger detected in response")
+                                should_hang_up = True
+                                # Remove the trigger from the processed text
+                                response_content = response_content.replace("[HANGUP_CALL]", "")
+
+                            # Data collection logic
+                            if collecting_data:
+                                add_call_data(call_sid, collecting_data, response['delta']['text'].strip())
+                                collecting_data = None  # Reset after collecting
+
+                            # Check for data requests
+                            if "Please provide your name" in response_content:
+                                collecting_data = "name"
+                            elif "Please provide your email" in response_content:
+                                collecting_data = "email"
+                            elif "Please provide your phone number" in response_content:
+                                collecting_data = "phone"
+                            elif "E-bike Model" in response_content or "description of your query" in response_content or "description of your issue" in response_content:
+                                collecting_data = "details"
 
                     if response.get('type') == 'response.audio.delta' and 'delta' in response:
                         audio_payload = base64.b64encode(base64.b64decode(response['delta'])).decode('utf-8')
@@ -762,10 +825,6 @@ async def handle_media_stream(websocket: WebSocket):
                         }
                         await websocket.send_json(audio_delta)
 
-                    if response.get('type') == 'response.message.delta' and 'text' in response:
-                        text_response = response['text']
-                        print(f"AI Response (Text): {text_response}")
-
                         if response_start_timestamp_twilio is None:
                             response_start_timestamp_twilio = latest_media_timestamp
                             if SHOW_TIMING_MATH:
@@ -777,12 +836,24 @@ async def handle_media_stream(websocket: WebSocket):
 
                         await send_mark(websocket, stream_sid)
 
+                    # Check if we should hang up after response is complete
+                    if response.get('type') == 'response.done' and should_hang_up and call_sid:
+                        print(f"Hanging up call {call_sid} after final message")
+                        await hang_up_call(call_sid)
+                        should_hang_up = False  # Reset flag
+
+                        # Create ticket after hangup
+                        ticket_data = extract_ticket_data(call_sid)
+                        if ticket_data:
+                            await create_ticket(ticket_data)
+
                     # Trigger an interruption. Your use case might work better using `input_audio_buffer.speech_stopped`, or combining the two.
                     if response.get('type') == 'input_audio_buffer.speech_started':
                         print("Speech started detected.")
                         if last_assistant_item:
                             print(f"Interrupting response with id: {last_assistant_item}")
                             await handle_speech_started_event()
+
             except Exception as e:
                 print(f"Error in send_to_twilio: {e}")
 
@@ -817,95 +888,73 @@ async def handle_media_stream(websocket: WebSocket):
                 response_start_timestamp_twilio = None
 
         async def send_mark(connection, stream_sid):
-            if stream_sid:
-                mark_event = {
-                    "event": "mark",
-                    "streamSid": stream_sid,
-                    "mark": {"name": "responsePart"}
-                }
-                await connection.send_json(mark_event)
-                mark_queue.append('responsePart')
+                    if stream_sid:
+                        mark_event = {
+                            "event": "mark",
+                            "streamSid": stream_sid,
+                            "mark": {"name": "responsePart"}
+                        }
+                        await connection.send_json(mark_event)
+                        mark_queue.append('responsePart')        
+
+        async def hang_up_call(call_sid):
+            """Hang up the Twilio call."""
+            if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and call_sid:
+                try:
+                    # Use Twilio REST API to hang up the call
+                    twilio_client.calls(call_sid).update(status="completed")
+                    print(f"Successfully hung up call {call_sid}")
+                except Exception as e:
+                    print(f"Error hanging up call: {e}")
+            else:
+                print("Cannot hang up call: Missing Twilio credentials or call_sid")
 
         await asyncio.gather(receive_from_twilio(), send_to_twilio())
 
 async def send_initial_conversation_item(openai_ws):
-    """Send initial conversation item if AI talks first."""
-    initial_conversation_item = {
-        "type": "conversation.item.create",
-        "item": {
-            "type": "message",
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": "Greet the user with 'Hello there! I am an AI voice assistant powered by Twilio and the OpenAI Realtime API. You can ask me for facts, jokes, or anything you can imagine. How can I help you?'"
+            """Send initial conversation item if AI talks first."""
+            initial_conversation_item = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Greet the user with 'Hello! Thanks for calling E-bike BC. This call may be recorded for quality and training purposes. I am Eva. How can I assist you?'"
+                        }
+                    ]
                 }
-            ]
-        }
-    }
-    await openai_ws.send(json.dumps(initial_conversation_item))
-    await openai_ws.send(json.dumps({"type": "response.create"}))
-
+            }
+            await openai_ws.send(json.dumps(initial_conversation_item))
+            await openai_ws.send(json.dumps({"type": "response.create"}))       
 
 async def initialize_session(openai_ws):
-    """Control initial session with OpenAI."""
-    session_update = {
-        "type": "session.update",
-        "session": {
-            "turn_detection": {"type": "server_vad"},
-            "input_audio_format": "g711_ulaw",
-            "output_audio_format": "g711_ulaw",
-            "voice": VOICE,
-            "instructions": SYSTEM_MESSAGE,
-            "modalities": ["text", "audio"],
-            "temperature": 0.6,
-        }
-    }
+            """Control initial session with OpenAI."""
+            session_update = {
+                "type": "session.update",
+                "session": {
+                    "turn_detection": {"type": "server_vad"},
+                    "input_audio_format": "g711_ulaw",
+                    "output_audio_format": "g711_ulaw",
+                    "voice": VOICE,
+                    "instructions": SYSTEM_MESSAGE,
+                    "modalities": ["text", "audio"],
+                    "temperature": 0.6,
+                }
+            }
 
-    dumped_data = json.dumps(session_update)
-    print("dumped_Data-------------->", dumped_data)
-    loaded_data = json.dumps(session_update)
-    print("loaded_Data-------------->", loaded_data)
-    print('Sending session update:', json.dumps(session_update))
-    await openai_ws.send(loaded_data)
+            dumped_data = json.dumps(session_update)
+            print("duped_Data-------------->", dumped_data)
+            loaded_data = json.dumps(session_update)
+            print("loaded_Data-------------->", loaded_data)
+            print('Sending session update:', json.dumps(session_update))
+            await openai_ws.send(loaded_data)
 
-    # Uncomment the next line to have the AI speak first
-    await send_initial_conversation_item(openai_ws)
-
-
-@traceable
-def audio_to_text(audio_b64: str) -> str:
-    messages = [
-        (
-            "human",
-            [
-                {"type": "text", "text": "Transcribe the following:"},
-                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "wav"}},
-            ],
-        )
-    ]
-    output_message = llm.invoke(messages)
-    return output_message.content
-
-import logging
-
-logging.basicConfig(level=logging.INFO)
-
-
-
-USER_SESSIONS = {}
-
-async def handle_media_stream(websocket: WebSocket):
-    logging.info("Client connected to media stream")
-    try:
-        async for message in websocket.iter_text():
-            logging.info(f"Received message: {message}")
-    except WebSocketDisconnect:
-        logging.warning("Client disconnected")
-
-
+            # Uncomment the next line to have the AI speak first
+            await send_initial_conversation_item(openai_ws)
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=PORT)
+                
 

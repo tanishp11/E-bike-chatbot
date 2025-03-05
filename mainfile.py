@@ -5,12 +5,11 @@ import json
 import base64
 import asyncio
 import websockets
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, requests
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from twilio.rest import Client
-from .zoho_cread  import process_and_create_tickets, extract_all_info,get_access_token
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,10 +22,6 @@ PORT = int(os.getenv('PORT', 8000))
 # Add Twilio credentials for call hangup functionality
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-ORG_ID = os.getenv('ORG_ID')
-REFRESH_TOKEN = os.getenv('REFRESH_TOKEN')
-CLIENT_ID = os.getenv('CLIENT_ID')
-CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 
 # Initialize Twilio client
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -37,10 +32,12 @@ Role:
 You are a customer support assistant responsible for handling Sales, Support, Partnership, and Customer Service queries for E-bike BC. Your tasks include collecting customer details, creating Zoho support tickets, and transferring calls when needed.
 
 **Call Greeting:**  
-"Hello! Thank you for calling E-Bike BC. This call may be recorded for quality and training purposes.
-I’m Eva, your virtual assistant. I’m here to assist you with sales inquiries, technical support, partnership opportunities, and customer service. How may I help you today?"  
+"Hello! Thank you for calling E-Bike BC. This call may be recorded for quality and training purposes."
+"I’m Eva, your virtual assistant. I’m here to assist you with sales inquiries, technical support, partnership opportunities, and customer service. How may I help you today?"  
+
 
 **Query Handling:**
+
 1. **Sales Query Handling**  
    - AI Agent: "I can help answer your questions. How can I assist you today?"  
    - If the question is answered: "Glad I could help! Have a great day!" [HANGUP_CALL]  
@@ -94,23 +91,14 @@ I’m Eva, your virtual assistant. I’m here to assist you with sales inquiries
      - "Your ticket has been created successfully. Our team will reach out to you soon. Have a great day!" [HANGUP_CALL]  
    - **Once a customer service query is resolved, end the call.**  
 
-Additional Guidelines:
-- **Reassurance for Hesitant Customers:**  
-  - If a customer hesitates to share details, reassure them:  
-    *"Providing your details helps us serve you better and ensures that our team can follow up with the right solution."*  
-- **Handling Refusals:**  
-  - If a customer declines to share information, provide general guidance and offer an email for further inquiries.  
-- **Polite Call Closure:**  
-  - End each call with:  
-    *"Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly."*  
 
-*IMPORTANT:*  
-- Always return the response in *JSON format*, even if the user does not provide full details.  
-- Only include *user details* (name, email, phone, and issue) in the JSON response.  
+**IMPORTANT:**  
+- Always return the response in **JSON format**, even if the user does not provide full details.  
+- Only include **user details** (name, email, phone, and issue) in the JSON response.  
 - If some details are missing, ask again.  
-- *Once the required details are collected, return only one JSON response and do not generate multiple responses.*  
+- **Once the required details are collected, return only one JSON response and do not generate multiple responses.**  
 
-*JSON Response Format:*  
+**JSON Response Format:**  
 ```json
 {
   "info": {
@@ -121,7 +109,22 @@ Additional Guidelines:
   }
 }
 
+Additional Guidelines:
+- **Reassurance for Hesitant Customers:**  
+  - If a customer hesitates to share details, reassure them:  
+    *"Providing your details helps us serve you better and ensures that our team can follow up with the right solution."*  
+- **Handling Refusals:**  
+  - If a customer declines to share information, provide general guidance and offer an email for further inquiries.  
+- **Polite Call Closure:**  
+  - End each call with:  
+    *"Thank you for reaching out to E-bike BC! Your request has been logged, and our team will follow up shortly."*  
+
+IMPORTANT: After saying the final closure message, please ensure to:
+
+* End the call
+* Create a Zoho support ticket if necessary
 """
+
 
 VOICE = 'shimmer' 
 
@@ -143,6 +146,82 @@ if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
     print('Warning: Twilio credentials not set. Call hangup functionality will not work.')
 
 
+
+
+def create_zoho_ticket(response_content):
+    
+            # Load environment variables
+            load_dotenv()
+            
+            # Parse the JSON string if it's not already a dictionary
+            if isinstance(response_content, str):
+                try:
+                    response_json = json.loads(response_content)
+                except json.JSONDecodeError:
+                    print("Invalid JSON string")
+                    return None
+            else:
+                response_json = response_content
+            
+            # Extract info from the JSON data
+            info = response_json.get('info', {})
+            
+            # Zoho Desk API configuration
+            ZOHO_API_TOKEN = os.getenv('ZOHO_API_TOKEN')
+            ZOHO_DESK_ORG_ID = 60038061096
+            
+            # Zoho Desk API endpoint
+            url = "https://desk.zoho.in/api/v1/tickets"
+            
+            # Prepare headers
+            headers = {
+                "Authorization": f"Bearer {ZOHO_API_TOKEN}",
+                "Content-Type": "application/json",
+                "orgId": str(ZOHO_DESK_ORG_ID)
+            }
+            
+            # Prepare payload
+            payload = {
+                "subject": f"Support Request - {info.get('issue', 'No specific issue provided')}",
+                "departmentId": os.getenv('ZOHO_DESK_DEPARTMENT_ID'),
+                "contact": {
+                    "firstName": info.get('name', 'Unknown').split()[0],
+                    "lastName": info.get('name', 'Unknown').split()[-1] if len(info.get('name', '').split()) > 1 else '',
+                    "email": info.get('email', ''),
+                    "phone": info.get('phone', '')
+                },
+                "description": f"""Customer Details:
+        Name: {info.get('name', 'Not Provided')}
+        Email: {info.get('email', 'Not Provided')}
+        Phone: {info.get('phone', 'Not Provided')}
+
+        Issue Description: {info.get('issue', 'No details provided')}
+                """,
+                "priority": "Medium",
+                "status": "Open"
+            }
+            
+            try:
+                # Send POST request to Zoho Desk
+                response = requests.post(url, json=payload, headers=headers)
+                
+                # Check the response
+                if response.status_code in [200, 201]:
+                    print("Ticket created successfully!")
+                    return response.json()
+                else:
+                    print(f"Failed to create ticket. Status code: {response.status_code}")
+                    print(f"Response: {response.text}")
+                    return None
+    
+            except requests.RequestException as e:
+                print(f"Error creating Zoho ticket: {e}")
+                return None
+
+
+
+
+
 @app.get("/", response_class=JSONResponse)
 async def index_page():
     return {"message": "Media Stream Server is running....!"}
@@ -158,8 +237,6 @@ async def handle_incoming_call(request: Request):
     response.append(connect)
 
     return HTMLResponse(content=str(response), media_type="application/xml")
-
-
 
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
@@ -186,7 +263,6 @@ async def handle_media_stream(websocket: WebSocket):
         response_start_timestamp_twilio = None
         response_content = ""
         should_hang_up = False
-        DEPARTMENT_ID = "185141000000010772"
         
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
@@ -240,6 +316,10 @@ async def handle_media_stream(websocket: WebSocket):
                                         
                                     if response.get("type") == "response.done":
                                         print("Conversation complete. Saving transcript...")
+
+                                        ticket_response = create_zoho_ticket(response_content)
+                                        if ticket_response:
+                                                print("------>>>>Ticket----:", ticket_response)
                                         
                                         # Check if the response contains the hangup trigger
                                         if "[HANGUP_CALL]" in response_content:
@@ -248,12 +328,8 @@ async def handle_media_stream(websocket: WebSocket):
                                             # Remove the trigger from the processed transcript
                                             response_content = response_content.replace("[HANGUP_CALL]", "")
                                             if should_hang_up:
-                                                users_info = extract_all_info(response_content)
-                                                access_token = get_access_token(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET)
-                                                process_and_create_tickets(users_info, access_token, DEPARTMENT_ID)
-                                                
                                                 print("Waiting for 20 seconds before hanging up...")
-                                                time.sleep(20)
+                                                time.sleep(15)
                                                 print("Hanging up the call now.")
 
                     if response.get('type') == 'response.audio.delta' and 'delta' in response:
@@ -296,6 +372,7 @@ async def handle_media_stream(websocket: WebSocket):
                             
             except Exception as e:
                 print(f"Error in send_to_twilio: {e}")
+
 
         async def handle_speech_started_event():
             """Handle interruption when the caller's speech starts."""
@@ -349,9 +426,7 @@ async def handle_media_stream(websocket: WebSocket):
             else:
                 print("Cannot hang up call: Missing Twilio credentials or call_sid")
 
-        
-        print("Starting main final response...",response_content)
-        await asyncio.gather(receive_from_twilio(), send_to_twilio())
+        await asyncio.gather(receive_from_twilio(), send_to_twilio(),create_zoho_ticket())
         
 
 async def send_initial_conversation_item(openai_ws):
@@ -397,6 +472,7 @@ async def initialize_session(openai_ws):
 
     # Uncomment the next line to have the AI speak first
     await send_initial_conversation_item(openai_ws)
+
 
 
 if __name__ == "__main__":
